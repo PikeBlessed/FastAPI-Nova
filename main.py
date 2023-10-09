@@ -11,9 +11,17 @@ from starlette.requests import Request
 from jwt_manager import create_token, validate_token
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from config.database import Session, engine, Base
+from models.shirt import Shirt as ShirtModel
+
+from fastapi.encoders import jsonable_encoder
+
+from middlewares.error_handler import ErrorHandler
+
 app = FastAPI()
 
 load_dotenv()
+
 
 clothes = [
     {
@@ -66,6 +74,10 @@ clothes = [
     }
 ]
 
+app.add_middleware(ErrorHandler)
+
+Base.metadata.create_all(bind=engine)
+
 admin_email = os.getenv('ADMIN_EMAIL')
 admin_password = os.getenv('ADMIN_PASSWORD')
 
@@ -79,6 +91,7 @@ class JWTBearer(HTTPBearer):
 class User(BaseModel):
     email:str
     password:str
+
 
 class Shirt(BaseModel):
     id: int = Field(...)
@@ -133,21 +146,25 @@ def login(user: User):
 
 @app.get('/shirts', tags=['get shirt'], response_model=List[Shirt], status_code=200)
 def get_shirts() -> List[Shirt]:
-    return JSONResponse(content=clothes, status_code=200)
+    db = Session()
+    result = db.query(ShirtModel).all()
+    return JSONResponse(content=jsonable_encoder(result), status_code=200)
 
 @app.get('/shirts/{id}', tags=['get shirt'], response_model=Shirt)
 def get_shirt(id: int) -> Shirt:
-    for item in clothes:
-        if item['id'] == id:
-            return JSONResponse(content=item)
-    return JSONResponse(content=[], status_code=404)
+    db = Session()
+    result = db.query(ShirtModel).filter(ShirtModel.id == id).first()
+    if not result:
+        raise HTTPException(status_code=404, detail="Ese ID no existe")
+    return JSONResponse(content=jsonable_encoder(result), status_code=200)
 
 @app.get('/shirts/', tags=['get shirt'], response_model=List[Shirt], status_code=200)
-def get_shirt_by_category(collection: str) -> List[Shirt]:
-    shirt_category = list(filter(lambda k: k['collection'] == collection, clothes))
-    if not shirt_category:
-        raise HTTPException(status_code=404, detail="Colección no encontrada")
-    return shirt_category
+def get_shirts_by_collection(collection: str) -> List[Shirt]:
+    db = Session()
+    result = db.query(ShirtModel).filter(ShirtModel.collection == collection).all()
+    if not result:
+        raise HTTPException(status_code=404, detail="La coleccion indicada no existe")
+    return JSONResponse(content=jsonable_encoder(result), status_code=200)
 
 max_id = max(shirt['id'] for shirt in clothes) if clothes else 0
 
@@ -155,26 +172,36 @@ max_id = max(shirt['id'] for shirt in clothes) if clothes else 0
 def create_shirt(shirt: Shirt) -> dict:
     if shirt.id <= max_id or shirt.id > max_id + 2:
         raise HTTPException(status_code=400, detail="Invalid id")
-    clothes.append(shirt.dict())
+    db = Session()
+    new_shirt = ShirtModel(**shirt.dict())
+    db.add(new_shirt)
+    db.commit()
     return JSONResponse(content={'message': 'Se ha registrado la remera correctamente.'}, status_code=201)
+ 
+
+@app.put('/shirts/{id}', tags=['put shirt'], response_model=dict, status_code=200)
+def edit_shirt(id: int, shirt: Shirt) -> dict:
+    db = Session()
+    result = db.query(ShirtModel).filter(ShirtModel.id == id).first()
+    if not result:
+        raise HTTPException(status_code=404, detail="Ese ID no existe")
+    result.name = shirt.name
+    result.color = shirt.color
+    result.size = shirt.size
+    result.price = shirt.price
+    result.collection = shirt.collection
+    db.add(result)
+    db.commit()
+    db.refresh(result)
+    return JSONResponse(content={'message': 'Se ha modificado con extio la prenda'}, status_code=200)
     
 
-@app.put('/shirts/{id}', tags=['put shirt'], response_model=dict, status_code=200, dependencies=[Depends(JWTBearer())])
-def edit_shirt(id: int, shirt: Shirt) -> dict:
-    for item in clothes:
-        if item['id'] == id:
-            item['name'] = shirt.name
-            item['color'] = shirt.color
-            item['size'] = shirt.size
-            item['price'] = shirt.price
-            item['collection'] = shirt.collection
-            return JSONResponse(content={'message': 'Se ha modificado con extio la prenda'}, status_code=200)
-    return JSONResponse(content={'message': 'No se encontró una prenda con el id proporcionado'}, status_code=404)
-
-@app.delete('/shirts/{id}', tags=['delete shirt'], response_model=dict, status_code=200, dependencies=[Depends(JWTBearer())])
+@app.delete('/shirts/{id}', tags=['delete shirt'], response_model=dict, status_code=200)
 def delete_shirt(id: int) -> dict:
-    for item in clothes:
-        if item['id'] == id:
-            clothes.remove(item)
-            return JSONResponse(content={'message': 'La prenda se elimino con exito'}, status_code=200)
-    return JSONResponse(content={'message': 'No se encontró una prenda con el id proporcionado'}, status_code=404)
+    db = Session()
+    result = db.query(ShirtModel).filter(ShirtModel.id == id).first()
+    if not result:
+        raise HTTPException(status_code=404, detail="Ese ID no existe")
+    db.delete(result)
+    db.commit()
+    return JSONResponse(content={'message': 'Se ha iliminado la prenda con extio'}, status_code=200)
