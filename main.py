@@ -4,12 +4,8 @@ from pydantic import BaseModel, Field, validator
 from typing import Any, Coroutine, List, Optional
  
 from dotenv import load_dotenv
-import os
-
-from starlette.requests import Request
 
 from jwt_manager import create_token, validate_token
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from config.database import Session, engine, Base
 from models.shirt import Shirt as ShirtModel
@@ -17,7 +13,7 @@ from models.shirt import Shirt as ShirtModel
 from fastapi.encoders import jsonable_encoder
 
 from middlewares.error_handler import ErrorHandler
-
+from middlewares.jwt_bearer import JWTBearer, admin_email, admin_password
 app = FastAPI()
 
 load_dotenv()
@@ -77,16 +73,6 @@ clothes = [
 app.add_middleware(ErrorHandler)
 
 Base.metadata.create_all(bind=engine)
-
-admin_email = os.getenv('ADMIN_EMAIL')
-admin_password = os.getenv('ADMIN_PASSWORD')
-
-class JWTBearer(HTTPBearer):
-    async def __call__(self, request: Request):
-        auth = await super().__call__(request)
-        data = validate_token(auth.credentials)
-        if data['email'] != admin_email and data['password'] != admin_password:
-            raise HTTPException(status_code=403, detail="Las credenciales son invalidas")
 
 class User(BaseModel):
     email:str
