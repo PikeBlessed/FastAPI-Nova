@@ -10,8 +10,6 @@ from fastapi.encoders import jsonable_encoder
 
 from middlewares.jwt_bearer import JWTBearer
 
-from sqlalchemy import func
-
 from services.shirt import ShirtService
 
 from schemas.shirt import Shirt
@@ -40,14 +38,14 @@ def get_shirts_by_collection(collection: str) -> List[Shirt]:
         raise HTTPException(status_code=404, detail="La coleccion indicada no existe")
     return JSONResponse(content=jsonable_encoder(result), status_code=200)
 
-@shirt_router.post('/shirts', tags=['post shirt'], response_model=dict, status_code=201)
+@shirt_router.post('/shirts', tags=['post shirt'], response_model=dict, status_code=201, dependencies=[Depends(JWTBearer())])
 def create_shirt(shirt: Shirt) -> dict:
     db = Session()
     ShirtService(db).create_shirt(shirt)
     return JSONResponse(content={'message': 'Se ha registrado la remera correctamente.'}, status_code=201)
  
 
-@shirt_router.put('/shirts/{id}', tags=['put shirt'], response_model=dict, status_code=200)
+@shirt_router.put('/shirts/{id}', tags=['put shirt'], response_model=dict, status_code=200, dependencies=[Depends(JWTBearer())])
 def edit_shirt(id: int, shirt: Shirt) -> dict:
     db = Session()
     result = ShirtService(db).get_shirt(id)
@@ -57,7 +55,7 @@ def edit_shirt(id: int, shirt: Shirt) -> dict:
     return JSONResponse(content={'message': 'Se ha modificado con extio la prenda'}, status_code=200)
     
 
-@shirt_router.delete('/shirts/{id}', tags=['delete shirt'], response_model=dict, status_code=200)
+@shirt_router.delete('/shirts/{id}', tags=['delete shirt'], response_model=dict, status_code=200, dependencies=[Depends(JWTBearer())])
 def delete_shirt(id: int) -> dict:
     db = Session()
     result = ShirtService(db).get_shirt(id)

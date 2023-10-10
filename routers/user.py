@@ -1,5 +1,4 @@
 from fastapi import APIRouter
-from pydantic import BaseModel
 from utils.jwt_manager import create_token
 from fastapi.responses import JSONResponse
 from middlewares.jwt_bearer import admin_email, admin_password
